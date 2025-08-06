@@ -7,6 +7,7 @@ import { TradeStatus } from './interfaces/trade-status.enum';
 import { LoggingInterceptor } from '../common/interceptors/logging.interceptor';
 import { getQueueToken } from '@nestjs/bull';
 import Decimal from 'decimal.js';
+import { AssetRegistryService } from '../asset-registry/asset-registry.service';
 
 const mockTradeService = {
   create: jest.fn(),
@@ -15,6 +16,10 @@ const mockTradeService = {
   findOne: jest.fn(),
   getHealth: jest.fn(),
 } as unknown as jest.Mocked<TradeSettlementService>;
+
+const mockAssetRegistryService = {
+  findTradableAssetBySymbol: jest.fn(),
+};
 const mockSettlementQueue = { add: jest.fn() };
 
 describe('TradeSettlementController', () => {
@@ -32,6 +37,10 @@ describe('TradeSettlementController', () => {
         {
           provide: getQueueToken('settlement'),
           useValue: mockSettlementQueue,
+        },
+        {
+          provide: AssetRegistryService,
+          useValue: { findTradableAssetBySymbol: jest.fn() },
         },
       ],
     })

@@ -6,6 +6,7 @@ import { Trade } from './entities/trade.entity';
 import { BullModule } from '@nestjs/bull';
 import { SettlementProcessor } from './settlement.processor'
 import { BlockchainModule } from '../blockchain/blockchain.module';
+import { AssetRegistryModule } from '../asset-registry/asset-registry.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
       name: 'settlement',
     }),
     BlockchainModule,
+    AssetRegistryModule,
   ],
   controllers: [TradeSettlementController],
   providers: [TradeSettlementService, SettlementProcessor],

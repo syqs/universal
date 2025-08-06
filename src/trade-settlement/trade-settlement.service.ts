@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, EntityManager } from 'typeorm';
 import { CreateTradeDto } from './dto/create-trade.dto';
@@ -6,6 +6,7 @@ import { Trade } from './entities/trade.entity';
 import { TradeStatus } from './interfaces/trade-status.enum';
 import Decimal from 'decimal.js';
 import { BlockchainService } from '../blockchain/blockchain.service';
+import { AssetRegistryService } from '../asset-registry/asset-registry.service';
 
 @Injectable()
 export class TradeSettlementService {
@@ -16,24 +17,42 @@ export class TradeSettlementService {
     private readonly tradeRepository: Repository<Trade>,
     private readonly blockchainService: BlockchainService,
     private readonly entityManager: EntityManager,
+    private readonly assetRegistryService: AssetRegistryService,
   ) {}
 
   async create(createTradeDto: CreateTradeDto): Promise<Trade> {
     // In a real system, we would first call a LedgerService to place a hold on the seller's funds.
-    // e.g., await this.ledgerService.placeHold({ userId: seller, asset: baseAsset, amount });
-    
-    const { buyer, seller, baseAsset, quoteAsset, amount, price } = createTradeDto;
+    const { buyer, seller, baseAsset: baseSymbol, quoteAsset: quoteSymbol, amount, price } = createTradeDto;
+    this.logger.log(`Creating trade: ${JSON.stringify(createTradeDto)}`);
+    // 1. Validate that both assets exist, are active, and are tradable
+    const baseAsset = await this.assetRegistryService.findTradableAssetBySymbol(baseSymbol.toUpperCase());
+    const quoteAsset = await this.assetRegistryService.findTradableAssetBySymbol(quoteSymbol.toUpperCase());
+    if (!baseAsset || !quoteAsset) {
+      throw new NotFoundException(`One or both assets (${baseSymbol}, ${quoteSymbol}) not found or not tradable. ${baseAsset}, ${quoteAsset}`);
+    }
+    // 2. Validate the decimal places of the input amount
     const amountDecimal = new Decimal(amount);
+    if (amountDecimal.decimalPlaces() > baseAsset.decimals) {
+      throw new BadRequestException(
+        `Amount for ${baseAsset.symbol} exceeds the maximum allowed decimals of ${baseAsset.decimals}.`
+      );
+    }
+    
     const priceDecimal = new Decimal(price);
+    // We could add similar validation for the price if needed
+
     const totalQuoteAmount = amountDecimal.times(priceDecimal);
 
     const newTrade = this.tradeRepository.create({
-      buyer, seller, baseAsset, quoteAsset,
+      buyer,
+      seller,
+      baseAsset: baseAsset.symbol,
+      quoteAsset: quoteAsset.symbol,
       amount: amountDecimal,
       price: priceDecimal,
       totalQuoteAmount,
-      feeAsset: quoteAsset,
-      feeAmount: totalQuoteAmount.times('0.001'), // Example 0.1% fee
+      feeAsset: quoteAsset.symbol,
+      feeAmount: totalQuoteAmount.times('0.001'),
       status: TradeStatus.PENDING,
     });
 

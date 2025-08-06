@@ -12,6 +12,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Trade } from './entities/trade.entity';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import { mockBlockchainService } from '../blockchain/mock-blockchain.service';
+import { AssetRegistryService } from '../asset-registry/asset-registry.service';
 
 type MockType<T> = {
   [P in keyof T]?: jest.Mock<{}>;
@@ -24,6 +25,32 @@ const mockRepository = () => ({
   findOneBy: jest.fn(),
   find: jest.fn(),
 });
+
+const mockAsset = {
+  symbol: 'UBTC',
+  decimals: 8,
+  isActive: true,
+  isTradable: true,
+  // ...other required fields
+};
+const mockQuoteAsset = {
+  symbol: 'UUSD',
+  decimals: 6,
+  isActive: true,
+  isTradable: true,
+  // ...other required fields
+};
+
+const mockAssetRegistryService = {
+  findTradableAssetBySymbol: jest.fn(),
+};
+
+mockAssetRegistryService.findTradableAssetBySymbol
+  .mockImplementation((symbol) => {
+    if (symbol === 'UBTC') return Promise.resolve(mockAsset);
+    if (symbol === 'UUSD') return Promise.resolve(mockQuoteAsset);
+    return Promise.resolve(undefined);
+  });
 
 
 describe('TradeSettlementService', () => {
@@ -49,6 +76,10 @@ describe('TradeSettlementService', () => {
         {
           provide: EntityManager,
           useValue: entityManagerMock,
+        },
+        {
+          provide: AssetRegistryService,
+          useValue: mockAssetRegistryService,
         },
       ],
     }).compile();
@@ -80,13 +111,13 @@ describe('TradeSettlementService', () => {
         id: 'some-id',
         buyer: 'user1',
         seller: 'user2',
-        baseAsset: 'uBTC',
-        quoteAsset: 'uUSD',
+        baseAsset: 'UBTC',
+        quoteAsset: 'UUSD',
         amount: new Decimal('0.5'),
         price: new Decimal('65000.50'),
         totalQuoteAmount: new Decimal('32500.25'),
         feeAmount: new Decimal('32.50'),
-        feeAsset: 'uUSD',
+        feeAsset: 'UUSD',
         status: TradeStatus.PENDING,
         createdAt: expect.any(Date),
       };
@@ -98,13 +129,13 @@ describe('TradeSettlementService', () => {
       expect(repository.create).toHaveBeenCalledWith(expect.objectContaining({
         buyer: 'user1',
         seller: 'user2',
-        baseAsset: 'uBTC',
-        quoteAsset: 'uUSD',
+        baseAsset: 'UBTC',
+        quoteAsset: 'UUSD',
         amount: expect.anything(),
         price: expect.anything(),
         totalQuoteAmount: expect.anything(),
         feeAmount: expect.anything(),
-        feeAsset: 'uUSD',
+        feeAsset: 'UUSD',
         status: TradeStatus.PENDING,
       }));
       expect(repository.save).toHaveBeenCalledWith(expectedTrade);

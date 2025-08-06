@@ -3,8 +3,10 @@ import { TradeSettlementModule } from './trade-settlement/trade-settlement.modul
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Trade } from './trade-settlement/entities/trade.entity';
+import { Asset } from './asset-registry/entities/asset.entity';
 import { BullModule } from '@nestjs/bull';
 import { BlockchainModule } from './blockchain/blockchain.module';
+import { AssetRegistryModule } from './asset-registry/asset-registry.module';
 
 @Module({
   imports: [
@@ -21,11 +23,12 @@ import { BlockchainModule } from './blockchain/blockchain.module';
     TypeOrmModule.forRoot({
       type: 'sqlite',
       database: 'data/db.sqlite',
-      entities: [Trade],
+      entities: [Trade, Asset],
       synchronize: true,
     }),
     TradeSettlementModule,
     BlockchainModule,
+    AssetRegistryModule,
   ],
 })
 export class AppModule {}
