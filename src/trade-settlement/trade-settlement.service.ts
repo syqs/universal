@@ -17,7 +17,6 @@ interface AuthenticatedUser {
 @Injectable()
 export class TradeSettlementService {
   private readonly logger = new Logger(TradeSettlementService.name);
-  private readonly vaultService: VaultService;
 
   constructor(
     @InjectRepository(Trade)
@@ -25,6 +24,7 @@ export class TradeSettlementService {
     private readonly blockchainService: BlockchainService,
     private readonly entityManager: EntityManager,
     private readonly assetRegistryService: AssetRegistryService,
+    private readonly vaultService: VaultService,
   ) {}
 
   async create(createTradeDto: CreateTradeDto, user: AuthenticatedUser): Promise<Trade> {
@@ -40,6 +40,7 @@ export class TradeSettlementService {
     // In a real system, we would first call a LedgerService to place a hold on the seller's funds.
     const { buyer, seller, baseAsset: baseSymbol, quoteAsset: quoteSymbol, amount, price } = createTradeDto;
     this.logger.log(`Creating trade: ${JSON.stringify(createTradeDto)}`);
+
     // 1. Validate that both assets exist, are active, and are tradable
     const baseAsset = await this.assetRegistryService.findTradableAssetBySymbol(baseSymbol.toUpperCase());
     const quoteAsset = await this.assetRegistryService.findTradableAssetBySymbol(quoteSymbol.toUpperCase());
@@ -79,12 +80,21 @@ async processOnChainSettlement(tradeId: string): Promise<Trade> {
     // Use a database transaction to ensure atomicity
     return this.entityManager.transaction('SERIALIZABLE', async (transactionalEntityManager) => {
         const tradeRepo = transactionalEntityManager.getRepository(Trade);
-        
-        // Fetch the trade with a pessimistic write lock to prevent race conditions
-        const trade = await tradeRepo.findOne({
+
+        // Conditionally use pessimistic locking only for supported DB drivers
+        // SQLite does NOT support locking, so we skip the lock option for it
+        let trade;
+        const dbType = (transactionalEntityManager.connection.options.type || '').toLowerCase();
+        if (dbType === 'sqlite' || dbType === 'better-sqlite3') {
+          // No lock option for SQLite
+          trade = await tradeRepo.findOne({ where: { id: tradeId } });
+        } else {
+          // Use pessimistic_write lock for supported DBs (e.g., Postgres, MySQL)
+          trade = await tradeRepo.findOne({
             where: { id: tradeId },
             lock: { mode: 'pessimistic_write' },
-        });
+          });
+        }
 
         if (!trade) throw new NotFoundException('Trade not found during settlement.');
         if (trade.status !== TradeStatus.PENDING) {
@@ -94,7 +104,7 @@ async processOnChainSettlement(tradeId: string): Promise<Trade> {
         // 1. Update status to SETTLING immediately to prevent other workers from picking it up
         trade.status = TradeStatus.SETTLING;
         await tradeRepo.save(trade);
-        
+
         this.logger.log(`Trade ${tradeId} locked and marked as SETTLING.`);
 
         // 2. Perform the on-chain logic. This is the part that can take time.

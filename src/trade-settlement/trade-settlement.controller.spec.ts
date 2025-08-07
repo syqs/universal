@@ -65,9 +65,8 @@ describe('TradeSettlementController', () => {
       const settleTradeDto: SettleTradeDto = { tradeId: '1' };
       service.findOne.mockResolvedValue({ id: '1' } as any);
       mockSettlementQueue.add.mockResolvedValue(undefined);
-
-      const result = await controller.settle(settleTradeDto);
-
+      const mockReq = { user: { id: 'user1', roles: ['trader'] } };
+      const result = await controller.settle(settleTradeDto, mockReq);
       expect(service.findOne).toHaveBeenCalledWith('1');
       expect(mockSettlementQueue.add).toHaveBeenCalledWith('settle-trade', { tradeId: '1' });
       expect(result).toEqual({ message: 'Settlement request accepted and is being processed.' });
@@ -76,7 +75,8 @@ describe('TradeSettlementController', () => {
     it('should throw if trade is not found', async () => {
       const settleTradeDto: SettleTradeDto = { tradeId: 'notfound' };
       service.findOne.mockRejectedValue(new Error('Not found'));
-      await expect(controller.settle(settleTradeDto)).rejects.toThrow('Not found');
+      const mockReq = { user: { id: 'user1', roles: ['trader'] } };
+      await expect(controller.settle(settleTradeDto, mockReq)).rejects.toThrow('Not found');
       expect(service.findOne).toHaveBeenCalledWith('notfound');
       expect(mockSettlementQueue.add).not.toHaveBeenCalled();
     });

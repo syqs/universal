@@ -1,9 +1,9 @@
 import { Controller, Get, Post, Body, Param, Query, UseInterceptors, HttpCode, ParseUUIDPipe } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { TradeSettlementService } from './trade-settlement.service';
 import { CreateTradeDto } from './dto/create-trade.dto';
 import { SettleTradeDto } from './dto/settle-trade.dto';
 import { LoggingInterceptor } from '../common/interceptors/logging.interceptor';
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam, ApiBody } from '@nestjs/swagger';
 import { Trade } from './entities/trade.entity';
 import { TradeStatus } from './interfaces/trade-status.enum';
 import { InjectQueue } from '@nestjs/bull';
@@ -12,6 +12,7 @@ import { UseGuards, Request } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @ApiTags('trades')
+@ApiBearerAuth() 
 @Controller('trades')
 @UseInterceptors(LoggingInterceptor)
 export class TradeSettlementController {
@@ -20,37 +21,62 @@ export class TradeSettlementController {
     @InjectQueue('settlement') private readonly settlementQueue: Queue,
   ) {}
 
-  @UseGuards(JwtAuthGuard)
   @Post()
+  @UseGuards(JwtAuthGuard)
   @HttpCode(201)
-  @ApiOperation({ summary: 'Initiate a new trade (requires JWT)' })
+  @ApiOperation({ summary: 'Initiate a new trade (requires JWT Bearer token in Authorization header)' })
+  @ApiBearerAuth('JWT')
   @ApiResponse({ status: 201, description: 'The trade has been successfully initiated.', type: Trade })
   @ApiResponse({ status: 400, description: 'Bad Request. Input data is invalid.' })
-  @ApiBody({ type: CreateTradeDto })
-  create(
+  @ApiResponse({ status: 401, description: 'Unauthorized. JWT required.' })
+  @ApiBody({
+    type: CreateTradeDto,
+    examples: {
+      default: {
+        summary: 'Example trade',
+        value: {
+          buyer: 'user_wallet_buyer_123',
+          seller: 'user_wallet_seller_456',
+          baseAsset: 'uBTC',
+          quoteAsset: 'uUSD',
+          amount: '1.5',
+          price: '50000.75',
+        },
+      },
+    },
+  })
+  async create(
     @Body() createTradeDto: CreateTradeDto,
-    @Request() req, // Use the request object to access the authenticated user
+    @Request() req,
   ): Promise<Trade> {
-    // Pass the authenticated user payload to the service
+    // req.user is set by JwtStrategy
     return this.tradeSettlementService.create(createTradeDto, req.user);
   }
 
   @Post('/settle')
-  @HttpCode(202) // Use 202 Accepted
-  @ApiOperation({
-    summary: 'Queue a pending trade for settlement',
-    description: 'Accepts a settlement request and adds it to a background processing queue. The actual settlement happens asynchronously.',
-  })
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(202)
+  @ApiOperation({ summary: 'Queue a pending trade for settlement (requires JWT Bearer token)' })
+  @ApiBearerAuth('JWT')
   @ApiResponse({ status: 202, description: 'The settlement request has been accepted for processing.' })
   @ApiResponse({ status: 404, description: 'Trade not found for the given tradeId.' })
-  async settle(@Body() settleTradeDto: SettleTradeDto): Promise<{ message: string }> {
-    // Ensure the trade exists before queueing
+  @ApiResponse({ status: 401, description: 'Unauthorized. JWT required.' })
+  @ApiBody({
+    type: SettleTradeDto,
+    examples: {
+      default: {
+        summary: 'Settle trade example',
+        value: {
+          tradeId: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',
+        },
+      },
+    },
+  })
+  async settle(@Body() settleTradeDto: SettleTradeDto, @Request() req): Promise<{ message: string }> {
     await this.tradeSettlementService.findOne(settleTradeDto.tradeId);
-
     await this.settlementQueue.add('settle-trade', {
       tradeId: settleTradeDto.tradeId,
     });
-
     return { message: 'Settlement request accepted and is being processed.' };
   }
 

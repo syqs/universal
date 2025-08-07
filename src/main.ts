@@ -17,6 +17,14 @@ async function bootstrap() {
     .setTitle('uAsset Exchange')
     .setDescription('API for settling uAsset trades')
     .setVersion('1.0')
+    .addBearerAuth({
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+      in: 'header',
+      name: 'Authorization',
+      description: 'Enter JWT token as: Bearer <token>'
+    }, 'JWT')
     .addTag('trades')
     .addTag('assets')
     .build();
