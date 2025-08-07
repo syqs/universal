@@ -8,6 +8,8 @@ import { Trade } from './entities/trade.entity';
 import { TradeStatus } from './interfaces/trade-status.enum';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
+import { UseGuards, Request } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @ApiTags('trades')
 @Controller('trades')
@@ -18,16 +20,19 @@ export class TradeSettlementController {
     @InjectQueue('settlement') private readonly settlementQueue: Queue,
   ) {}
 
+  @UseGuards(JwtAuthGuard)
   @Post()
   @HttpCode(201)
-  @ApiOperation({
-    summary: 'Initiate a new trade',
-    description: 'Creates a new trade record in a PENDING state. In a real system, this would also place a hold on the seller\'s funds.',
-  })
+  @ApiOperation({ summary: 'Initiate a new trade (requires JWT)' })
   @ApiResponse({ status: 201, description: 'The trade has been successfully initiated.', type: Trade })
   @ApiResponse({ status: 400, description: 'Bad Request. Input data is invalid.' })
-  create(@Body() createTradeDto: CreateTradeDto): Promise<Trade> {
-    return this.tradeSettlementService.create(createTradeDto);
+  @ApiBody({ type: CreateTradeDto })
+  create(
+    @Body() createTradeDto: CreateTradeDto,
+    @Request() req, // Use the request object to access the authenticated user
+  ): Promise<Trade> {
+    // Pass the authenticated user payload to the service
+    return this.tradeSettlementService.create(createTradeDto, req.user);
   }
 
   @Post('/settle')

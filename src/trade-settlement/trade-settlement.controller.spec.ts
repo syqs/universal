@@ -188,8 +188,10 @@ describe('TradeSettlementController', () => {
       };
       const trade = { id: '1', ...dto } as any;
       mockTradeService.create.mockResolvedValue(trade);
-      const result = await controller.create(dto);
-      expect(service.create).toHaveBeenCalledWith(dto);
+      const mockReq = { user: { id: 'user1', roles: ['trader'] } };
+      const result = await controller.create(dto, mockReq);
+      // The controller passes req.user to service.create, so the expectation should match
+      expect(service.create).toHaveBeenCalledWith(dto, mockReq.user);
       expect(result).toEqual(trade);
     });
 
@@ -203,8 +205,10 @@ describe('TradeSettlementController', () => {
         price: '50000.00',
       };
       mockTradeService.create.mockRejectedValue(new Error('fail'));
-      await expect(controller.create(dto)).rejects.toThrow('fail');
-      expect(service.create).toHaveBeenCalledWith(dto);
+      const mockReq = { user: { id: 'user1', roles: ['trader'] } };
+      await expect(controller.create(dto, mockReq)).rejects.toThrow('fail');
+      // The controller passes req.user to service.create, so the expectation should match
+      expect(service.create).toHaveBeenCalledWith(dto, mockReq.user);
     });
   });
 });

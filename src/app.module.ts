@@ -1,27 +1,33 @@
 import { Module } from '@nestjs/common';
-import { TradeSettlementModule } from './trade-settlement/trade-settlement.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
-import { Trade } from './trade-settlement/entities/trade.entity';
-import { Asset } from './asset-registry/entities/asset.entity';
 import { BullModule } from '@nestjs/bull';
+
+// --- Application Modules ---
+import { TradeSettlementModule } from './trade-settlement/trade-settlement.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
 import { AssetRegistryModule } from './asset-registry/asset-registry.module';
-import { validationSchema } from './config/validation'; 
+import { AuthModule } from './auth/auth.module';
+import { VaultModule } from './vault/vault.module';
+import { CryptoModule } from './crypto/crypto.module';
 
+// --- Configuration & Entities ---
+import { validationSchema } from './config/validation';
+import { Trade } from './trade-settlement/entities/trade.entity';
+import { Asset } from './asset-registry/entities/asset.entity';
+import { Vault } from './vault/entities/vault.entity';
 
 @Module({
   imports: [
+    // --- Core Modules ---
     ConfigModule.forRoot({
-      isGlobal: true, // Makes ConfigService available everywhere
-      envFilePath: '.env', // Specifies the env file to load
-      validationSchema, // Apply our validation schema
+      isGlobal: true,
+      envFilePath: '.env',
+      validationSchema,
       validationOptions: {
-        abortEarly: true, // Stop validation on first error
+        abortEarly: true,
       },
     }),
-
-    // --- Dynamic BullModule Configuration ---
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -32,21 +38,21 @@ import { validationSchema } from './config/validation';
         },
       }),
     }),
-
-    // --- Dynamic TypeOrmModule Configuration ---
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService): TypeOrmModuleOptions => ({
         type: configService.get<string>('DB_TYPE') as any,
-        // Add other options for PostgreSQL if needed
-        // host: configService.get<string>('DB_HOST'),
-        // port: configService.get<number>('DB_PORT'),
         database: configService.get<string>('DB_DATABASE'),
-        entities: [Trade, Asset],
-        synchronize: configService.get<string>('NODE_ENV') !== 'production', // Never sync in prod
+        entities: [Trade, Asset, Vault],
+        synchronize: configService.get<string>('NODE_ENV') !== 'production',
       }),
     }),
+
+    // --- Feature Modules ---
+    AuthModule,
+    VaultModule,
+    CryptoModule,
     TradeSettlementModule,
     BlockchainModule,
     AssetRegistryModule,

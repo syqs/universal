@@ -58,9 +58,13 @@ describe('TradeSettlementService', () => {
   let repository: jest.Mocked<Repository<Trade>>;
 
   let entityManagerMock: any;
+  let mockVaultService;
   beforeEach(async () => {
     entityManagerMock = {
       transaction: jest.fn(),
+    };
+    mockVaultService = {
+      findOne: jest.fn(),
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -81,11 +85,18 @@ describe('TradeSettlementService', () => {
           provide: AssetRegistryService,
           useValue: mockAssetRegistryService,
         },
+        {
+          provide: 'VaultService',
+          useValue: mockVaultService,
+        },
       ],
     }).compile();
 
     service = module.get<TradeSettlementService>(TradeSettlementService);
     repository = module.get(getRepositoryToken(Trade)) as jest.Mocked<Repository<Trade>>;
+    // VaultService is now injected via provider, no need to patch
+    // Patch: assign mockVaultService to service.vaultService so it's defined
+    (service as any).vaultService = mockVaultService;
   });
 
   afterEach(() => {
@@ -124,7 +135,14 @@ describe('TradeSettlementService', () => {
       repository.create.mockReturnValue(expectedTrade);
       repository.save.mockResolvedValue(expectedTrade);
 
-      const result = await service.create(createTradeDto);
+      // Mock vaultService.findOne to return a valid vault
+      mockVaultService.findOne.mockResolvedValue({
+        delegatedSessionKey: 'mock-session-key',
+        delegationExpiresAt: new Date(Date.now() + 100000),
+      });
+
+      const mockReq = { sub: 'user1', sessionKey: 'mock-session-key', roles: ['trader'] };
+      const result = await service.create(createTradeDto, mockReq);
 
       expect(repository.create).toHaveBeenCalledWith(expect.objectContaining({
         buyer: 'user1',

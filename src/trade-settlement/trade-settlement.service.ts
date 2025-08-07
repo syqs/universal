@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, ConflictException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, EntityManager } from 'typeorm';
 import { CreateTradeDto } from './dto/create-trade.dto';
@@ -7,10 +7,17 @@ import { TradeStatus } from './interfaces/trade-status.enum';
 import Decimal from 'decimal.js';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import { AssetRegistryService } from '../asset-registry/asset-registry.service';
+import { VaultService } from '../vault/vault.service';
+
+interface AuthenticatedUser {
+  sub: string; // The owner's main address
+  sessionKey: string;
+}
 
 @Injectable()
 export class TradeSettlementService {
   private readonly logger = new Logger(TradeSettlementService.name);
+  private readonly vaultService: VaultService;
 
   constructor(
     @InjectRepository(Trade)
@@ -20,7 +27,16 @@ export class TradeSettlementService {
     private readonly assetRegistryService: AssetRegistryService,
   ) {}
 
-  async create(createTradeDto: CreateTradeDto): Promise<Trade> {
+  async create(createTradeDto: CreateTradeDto, user: AuthenticatedUser): Promise<Trade> {
+
+    if (createTradeDto.buyer !== user.sub) {
+      throw new UnauthorizedException('Buyer address does not match authenticated user.');
+    }
+    // Check if the session key is valid and authorized
+    const vault = await this.vaultService.findOne(user.sub);
+    if (!vault || vault.delegatedSessionKey !== user.sessionKey || new Date() > vault.delegationExpiresAt) {
+      throw new UnauthorizedException('Session key is invalid or expired.');
+    }
     // In a real system, we would first call a LedgerService to place a hold on the seller's funds.
     const { buyer, seller, baseAsset: baseSymbol, quoteAsset: quoteSymbol, amount, price } = createTradeDto;
     this.logger.log(`Creating trade: ${JSON.stringify(createTradeDto)}`);
